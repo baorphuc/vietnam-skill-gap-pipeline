@@ -78,23 +78,33 @@ def parse_salary(salary_raw):
     text = salary_raw.strip()
     currency = "USD" if ("$" in text or "USD" in text.upper()) else None
 
+    # Phát hiện lương theo NĂM (vd "Up to 37,000/year") — ITviec mặc định
+    # ghi lương theo THÁNG, job nào ghi theo năm là ngoại lệ, cần quy đổi
+    # về tháng để không làm lệch trung bình so với phần còn lại của dataset.
+    is_annual = bool(re.search(r"/\s*year|per\s*year|/\s*yr|annual", text, re.IGNORECASE))
+    divisor = 12.0 if is_annual else 1.0
+
     # Bỏ ký tự tiền tệ + dấu phẩy ngăn cách nghìn để regex số dễ match
     cleaned = text.replace("$", "").replace(",", "")
 
     # Pattern "X - Y" (có thể có chữ USD kèm theo)
     range_match = re.search(r"([\d.]+)\s*-\s*([\d.]+)", cleaned)
     if range_match:
-        return (float(range_match.group(1)), float(range_match.group(2)), currency or "USD")
+        return (
+            round(float(range_match.group(1)) / divisor, 0),
+            round(float(range_match.group(2)) / divisor, 0),
+            currency or "USD",
+        )
 
     # Pattern "Up to X"
     upto_match = re.search(r"up to\s*([\d.]+)", cleaned, re.IGNORECASE)
     if upto_match:
-        return (None, float(upto_match.group(1)), currency or "USD")
+        return (None, round(float(upto_match.group(1)) / divisor, 0), currency or "USD")
 
     # Pattern "From X"
     from_match = re.search(r"from\s*([\d.]+)", cleaned, re.IGNORECASE)
     if from_match:
-        return (float(from_match.group(1)), None, currency or "USD")
+        return (round(float(from_match.group(1)) / divisor, 0), None, currency or "USD")
 
     # Không parse được (vd "Thỏa thuận" lẽ ra đã bị lọc thành null ở Bronze,
     # nhưng phòng hờ record nào lọt qua)
