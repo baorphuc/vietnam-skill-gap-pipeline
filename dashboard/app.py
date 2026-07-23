@@ -73,6 +73,24 @@ def load_silver_summary() -> pd.DataFrame:
     ).df()
 
 
+@st.cache_data(ttl=300)
+def load_cooccurrence() -> pd.DataFrame:
+    con = get_duckdb_connection()
+    return con.execute(
+        f"SELECT * FROM read_parquet('s3://{BUCKET}/gold/skill_cooccurrence/*.parquet') "
+        f"ORDER BY co_occurrence_count DESC"
+    ).df()
+
+
+@st.cache_data(ttl=300)
+def load_skill_gap() -> pd.DataFrame:
+    con = get_duckdb_connection()
+    return con.execute(
+        f"SELECT * FROM read_parquet('s3://{BUCKET}/gold/skill_gap_by_level/*.parquet') "
+        f"ORDER BY gap_senior_minus_junior DESC"
+    ).df()
+
+
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
@@ -85,6 +103,8 @@ try:
         top_skills_df = load_top_skills()
         salary_df = load_salary_by_skill()
         silver_df = load_silver_summary()
+        cooccurrence_df = load_cooccurrence()
+        skill_gap_df = load_skill_gap()
 except Exception as e:
     st.error(
         f"Không kết nối được MinIO ({MINIO_ENDPOINT}). "
@@ -168,6 +188,57 @@ with col_right:
     )
     fig_companies.update_layout(showlegend=False)
     st.plotly_chart(fig_companies, use_container_width=True)
+
+st.divider()
+
+# ── Skill Co-occurrence ──
+st.subheader("🔗 Cặp kỹ năng hay đi cùng nhau")
+st.caption("Top 20 cặp skill xuất hiện chung trong nhiều job nhất (trong phạm vi Top 20 skills)")
+
+cooccurrence_display = cooccurrence_df.head(20).copy()
+cooccurrence_display["pair"] = (
+    cooccurrence_display["skill_a"] + " + " + cooccurrence_display["skill_b"]
+)
+fig_cooc = px.bar(
+    cooccurrence_display.sort_values("co_occurrence_count"),
+    x="co_occurrence_count",
+    y="pair",
+    orientation="h",
+    labels={"co_occurrence_count": "Số job cùng yêu cầu cả 2 skill", "pair": "Cặp kỹ năng"},
+    color="co_occurrence_count",
+    color_continuous_scale="Purples",
+)
+fig_cooc.update_layout(height=600, showlegend=False)
+st.plotly_chart(fig_cooc, use_container_width=True)
+
+st.divider()
+
+# ── Skill Gap: Senior vs Junior ──
+st.subheader("📊 Skill Gap: Senior so với Junior")
+st.warning(
+    "⚠️ Junior chỉ có **3 job** trong dataset — % rất nhiễu (mỗi job đổi ~33%). "
+    "Số liệu mang tính tham khảo, không đại diện thống kê đầy đủ.",
+    icon="⚠️",
+)
+st.caption(
+    "Thanh dương (phải) = skill Senior cần nhiều hơn Junior. "
+    "Thanh âm (trái) = skill Junior cần nhiều hơn Senior."
+)
+
+gap_display = skill_gap_df.sort_values("gap_senior_minus_junior")
+fig_gap = px.bar(
+    gap_display,
+    x="gap_senior_minus_junior",
+    y="skill",
+    orientation="h",
+    labels={"gap_senior_minus_junior": "Gap % (Senior - Junior)", "skill": "Kỹ năng"},
+    color="gap_senior_minus_junior",
+    color_continuous_scale="RdYlGn",
+    color_continuous_midpoint=0,
+)
+fig_gap.update_layout(height=700, showlegend=False)
+fig_gap.add_vline(x=0, line_width=1, line_color="gray")
+st.plotly_chart(fig_gap, use_container_width=True)
 
 st.divider()
 st.caption(

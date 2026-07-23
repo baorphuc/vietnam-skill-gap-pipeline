@@ -95,6 +95,14 @@ def main():
         )
         # chỉ giữ skill có đủ mẫu để trung bình có ý nghĩa (>=2 job)
         .filter(F.col("job_count_with_salary") >= 2)
+        # loại "crossed range" — khi avg_min > avg_max, dấu hiệu min/max được
+        # tính trung bình từ các job KHÁC NHAU (1 job chỉ có min, job khác chỉ
+        # có max) do mẫu quá thưa, nên khoảng lương ra không có ý nghĩa thực tế
+        .filter(
+            F.col("avg_salary_min").isNull()
+            | F.col("avg_salary_max").isNull()
+            | (F.col("avg_salary_min") <= F.col("avg_salary_max"))
+        )
         .orderBy(F.desc("job_count_with_salary"))
     )
 
