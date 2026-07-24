@@ -41,7 +41,13 @@ from pyspark.sql.types import (
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_TOPIC = "raw.jobs"
 
-MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
+# RUN_ONCE=true -> dùng trigger(availableNow=True): xử lý hết data hiện có
+# trong Kafka rồi TỰ DỪNG (thay vì chạy streaming vô hạn). Cần thiết để
+# Airflow orchestrate job này như 1 task bình thường (có điểm kết thúc).
+RUN_ONCE = os.environ.get("RUN_ONCE", "false").lower() == "true"
+
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "minio:9000")  # KHÔNG có http:// —
+# hadoop-aws 3.3.x bị hang/SSL-timeout dài nếu endpoint có scheme + ssl.enabled=false
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
 
@@ -112,13 +118,16 @@ def main():
     # Sink 1: raw_json — lưu nguyên bản, không parse, để có thể replay
     # Silver/Gold sau này nếu schema đổi mà không mất dữ liệu gốc
     # -----------------------------------------------------------------
+    trigger_kwargs = {"availableNow": True} if RUN_ONCE else {"processingTime": "30 seconds"}
+    print(f"Trigger mode: {'availableNow (chạy 1 lần rồi dừng)' if RUN_ONCE else 'continuous (30s/batch)'}")
+
     raw_query = (
         raw_df.writeStream
         .format("json")
         .option("path", RAW_JSON_PATH)
         .option("checkpointLocation", CHECKPOINT_ROOT + "raw_json/")
         .outputMode("append")
-        .trigger(processingTime="30 seconds")
+        .trigger(**trigger_kwargs)
         .start()
     )
 
@@ -147,11 +156,18 @@ def main():
         .option("checkpointLocation", CHECKPOINT_ROOT + "parsed_parquet/")
         .partitionBy("crawled_date")
         .outputMode("append")
-        .trigger(processingTime="30 seconds")
+        .trigger(**trigger_kwargs)
         .start()
     )
 
-    spark.streams.awaitAnyTermination()
+    if RUN_ONCE:
+        # availableNow tự dừng khi hết data -> chờ CẢ 2 query kết thúc
+        # (awaitAnyTermination sẽ thoát ngay khi 1 trong 2 xong, bỏ sót cái còn lại)
+        raw_query.awaitTermination()
+        parsed_query.awaitTermination()
+        print("✅ RUN_ONCE hoàn thành — đã xử lý hết data hiện có trong Kafka.")
+    else:
+        spark.streams.awaitAnyTermination()
 
 
 if __name__ == "__main__":

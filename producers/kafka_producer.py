@@ -13,11 +13,14 @@ Usage:
 """
 
 import json
+import os
 import time
 
 from kafka import KafkaProducer
 
-KAFKA_BOOTSTRAP = "localhost:29092"
+# Chạy từ WSL host (ngoài Docker network) -> "localhost:29092" (port đã map ra host)
+# Chạy TRONG container cùng Docker network (vd từ Airflow) -> "kafka:9092"
+KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:29092")
 TOPIC = "raw.jobs"
 INPUT_FILE = "data/raw_jobs.json"
 

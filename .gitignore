@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Airflow
+airflow/logs/
+
+# Data files (không commit data vào git)
+data/
+*.parquet
+*.json.gz
+
+# Internal tracking doc (không phải deliverable)
+PROGRESS_SUMMARY.md
+
+# Credentials
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes (managed separately)
+minio-data/
