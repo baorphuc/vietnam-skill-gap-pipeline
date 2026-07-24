@@ -26,3 +26,4 @@ PROGRESS_SUMMARY.md
 
 # Docker volumes (managed separately)
 minio-data/
+debug_html/
